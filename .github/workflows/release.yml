@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: agy-t3-sync-linux-x86_64
+            ext: tar.gz
+            cross_aarch64: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: agy-t3-sync-linux-aarch64
+            ext: tar.gz
+            cross_aarch64: true
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: agy-t3-sync-windows-x86_64
+            ext: zip
+            cross_aarch64: false
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: agy-t3-sync-darwin-aarch64
+            ext: tar.gz
+            cross_aarch64: false
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: agy-t3-sync-darwin-x86_64
+            ext: tar.gz
+            cross_aarch64: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install aarch64 cross-compiler
+        if: matrix.cross_aarch64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        shell: bash
+        env:
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Unix archive
+        if: matrix.ext == 'tar.gz'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/agy-t3-sync dist/agy-t3-sync
+          chmod 755 dist/agy-t3-sync
+          tar -C dist -czf ${{ matrix.artifact }}.tar.gz agy-t3-sync
+
+      - name: Package Windows archive
+        if: matrix.ext == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target\${{ matrix.target }}\release\agy-t3-sync.exe dist\agy-t3-sync.exe
+          Compress-Archive -Path dist\agy-t3-sync.exe -DestinationPath ${{ matrix.artifact }}.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.${{ matrix.ext }}
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          sha256sum agy-t3-sync-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/agy-t3-sync-*
+            artifacts/SHA256SUMS
