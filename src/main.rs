@@ -109,10 +109,13 @@ enum Commands {
     },
     /// Run one token sync pass and exit
     Once,
-    /// Show sync, watcher, server, and 5h/weekly quota breakdown
+    /// Show sync, watcher, server, and 5h/weekly quota breakdown (refreshes live quotas by default)
     Status {
-        /// Refresh live quotas via antigravity-server before printing
-        #[arg(long)]
+        /// Skip live quota refresh and read cached quota data immediately
+        #[arg(long, conflicts_with = "refresh")]
+        no_refresh: bool,
+        /// Refresh live quotas via antigravity-server before printing (default; kept for compatibility)
+        #[arg(long, conflicts_with = "no_refresh")]
         refresh: bool,
     },
     /// Check prerequisites and diagnose setup issues
@@ -159,7 +162,7 @@ struct Cli {
     /// Run one sync pass and exit (legacy flag)
     #[arg(long, group = "legacy_action")]
     once: bool,
-    /// Show sync, watcher, server, and 5h/weekly quota breakdown (legacy flag)
+    /// Show sync, watcher, server, and 5h/weekly quota breakdown (refreshes live quotas by default; legacy flag)
     #[arg(long, group = "legacy_action")]
     status: bool,
     /// Check prerequisites and diagnose setup issues (legacy flag)
@@ -187,8 +190,11 @@ struct Cli {
     /// Token sync polling interval in seconds
     #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u64).range(1..))]
     interval: u64,
-    /// Refresh live quotas via antigravity-server before printing (with --status)
-    #[arg(long)]
+    /// Skip live quota refresh and read cached quota data immediately (with --status)
+    #[arg(long, conflicts_with = "refresh")]
+    no_refresh: bool,
+    /// Refresh live quotas via antigravity-server before printing (default with --status)
+    #[arg(long, conflicts_with = "no_refresh")]
     refresh: bool,
     /// Skip setting up antigravity-server alongside the watcher (with --install)
     #[arg(long)]
@@ -260,9 +266,11 @@ fn cmd_watch(paths: &AppPaths, interval: u64) -> i32 {
 fn cmd_status(paths: &AppPaths, refresh: bool) -> i32 {
     let cfg = load_config(paths);
     let mut state = load_state(paths);
+    let mut refreshed_live = false;
 
     if refresh {
         if refresh_all_quotas(paths, &cfg.server_url) {
+            refreshed_live = true;
             state.last_refresh_at = now_epoch_secs();
             let _ = save_state(paths, &state);
             state = load_state(paths);
@@ -446,7 +454,14 @@ fn cmd_status(paths: &AppPaths, refresh: bool) -> i32 {
         } else {
             "unknown".to_string()
         };
-        println!("\nQuota updated: {updated_str}  (* = active; add --refresh for live check)");
+        let mode_hint = if refreshed_live {
+            "live; use --no-refresh for cached"
+        } else if refresh {
+            "cached; server unavailable"
+        } else {
+            "cached; omit --no-refresh for live"
+        };
+        println!("\nQuota updated: {updated_str}  (* = active; {mode_hint})");
     }
 
     0
@@ -548,6 +563,10 @@ fn cmd_rotate_config(paths: &AppPaths, args: &ConfigArgs) -> i32 {
     0
 }
 
+fn should_refresh(no_refresh: bool, refresh: bool) -> bool {
+    refresh || !no_refresh
+}
+
 fn main() {
     let cli = Cli::parse();
     let paths = AppPaths::detect();
@@ -558,7 +577,9 @@ fn main() {
             invoke_sync(&paths, false);
             0
         }
-        Some(Commands::Status { refresh }) => cmd_status(&paths, refresh),
+        Some(Commands::Status { no_refresh, refresh }) => {
+            cmd_status(&paths, should_refresh(no_refresh, refresh))
+        }
         Some(Commands::Doctor) => cmd_doctor(&paths),
         Some(Commands::RestartAgy) => cmd_restart_agy(&paths),
         Some(Commands::RotateNow) => {
@@ -604,6 +625,9 @@ fn main() {
             } else if cli.refresh && !cli.status {
                 eprintln!("Error: --refresh requires --status");
                 2
+            } else if cli.no_refresh && !cli.status {
+                eprintln!("Error: --no-refresh requires --status");
+                2
             } else if cli.no_server && !cli.install {
                 eprintln!("Error: --no-server requires --install");
                 2
@@ -614,7 +638,7 @@ fn main() {
                 invoke_sync(&paths, false);
                 0
             } else if cli.status {
-                cmd_status(&paths, cli.refresh)
+                cmd_status(&paths, should_refresh(cli.no_refresh, cli.refresh))
             } else if cli.doctor {
                 cmd_doctor(&paths)
             } else if cli.restart_agy {
@@ -656,4 +680,65 @@ fn main() {
     };
 
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_subcommand_defaults_to_live_refresh() {
+        let cli = Cli::try_parse_from(["agy-t3-sync", "status"]).unwrap();
+        match cli.command {
+            Some(Commands::Status { no_refresh, refresh }) => {
+                assert!(!no_refresh);
+                assert!(!refresh);
+                assert!(should_refresh(no_refresh, refresh));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli_no = Cli::try_parse_from(["agy-t3-sync", "status", "--no-refresh"]).unwrap();
+        match cli_no.command {
+            Some(Commands::Status { no_refresh, refresh }) => {
+                assert!(no_refresh);
+                assert!(!refresh);
+                assert!(!should_refresh(no_refresh, refresh));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli_yes = Cli::try_parse_from(["agy-t3-sync", "status", "--refresh"]).unwrap();
+        match cli_yes.command {
+            Some(Commands::Status { no_refresh, refresh }) => {
+                assert!(!no_refresh);
+                assert!(refresh);
+                assert!(should_refresh(no_refresh, refresh));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_status_flag_defaults_to_live_refresh() {
+        let cli = Cli::try_parse_from(["agy-t3-sync", "--status"]).unwrap();
+        assert!(cli.status);
+        assert!(should_refresh(cli.no_refresh, cli.refresh));
+
+        let cli_no = Cli::try_parse_from(["agy-t3-sync", "--status", "--no-refresh"]).unwrap();
+        assert!(cli_no.status);
+        assert!(!should_refresh(cli_no.no_refresh, cli_no.refresh));
+
+        let cli_yes = Cli::try_parse_from(["agy-t3-sync", "--status", "--refresh"]).unwrap();
+        assert!(cli_yes.status);
+        assert!(should_refresh(cli_yes.no_refresh, cli_yes.refresh));
+    }
+
+    #[test]
+    fn status_refresh_and_no_refresh_conflict() {
+        assert!(Cli::try_parse_from(["agy-t3-sync", "status", "--refresh", "--no-refresh"]).is_err());
+        assert!(
+            Cli::try_parse_from(["agy-t3-sync", "--status", "--refresh", "--no-refresh"]).is_err()
+        );
+    }
 }

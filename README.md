@@ -7,7 +7,7 @@ Single-binary, cross-platform CLI & background daemon that keeps **T3 Code**'s b
 - **Real-time token sync (`oauth-personal`)**: Watches `~/.gemini/antigravity-cli/antigravity-oauth-token` every 5 seconds and atomically syncs it into all T3 Code `oauth-personal` Antigravity profiles (skipping `gemini-api-key` / proxy profiles), with automatic backup rotation (keeping the latest 3 backups).
 - **Quota & schedule auto-rotate**: Monitors active account quota via `antigravity-server` (`http://127.0.0.1:8045`), automatically triggers `antigravity-tools switch <email> --target agy` when remaining quota falls below threshold (`<= 10%` by default), and supports `quota`, `schedule`, and `hybrid` modes.
 - **Idle-safe process recycling (`auto_restart_idle`)**: Reads T3 Code's `statev2.sqlite` strictly read-only to identify stale `antigravity acp` workers from before the latest rotation. Idle workers are restarted cleanly (so the next turn resumes on the new account via `session/resume`), while running turns, pending approvals, or background tasks remain untouched until finished + grace period.
-- **Per-bucket status view (`status --refresh`)**: Displays remaining quota across **Gemini Models** and **Claude & GPT Models** with both **5-hour** and **Weekly** windows plus reset countdowns.
+- **Per-bucket status view (`status`)**: Refreshes live quotas via `antigravity-server` by default (use `--no-refresh` for cached data) and displays remaining quota across **Gemini Models** and **Claude & GPT Models** with both **5-hour** and **Weekly** windows plus reset countdowns.
 - **Zero-dependency single binary**: Native Rust binary (bundled SQLite & rustls TLS) with automatic background service setup (`systemd --user` on Linux, Startup folder shortcut on Windows, LaunchAgent on macOS).
 
 ## Quick Install
@@ -41,8 +41,8 @@ agy-t3-sync doctor
 ## CLI Usage
 
 ```sh
-agy-t3-sync status                              # Cached sync, service, and 5h/weekly quota status
-agy-t3-sync status --refresh                    # Refresh live quotas from antigravity-server first
+agy-t3-sync status                              # Live-refresh sync, service, and 5h/weekly quota status
+agy-t3-sync status --no-refresh                 # Read cached quota instantly without calling server
 agy-t3-sync doctor                              # Verify T3 profiles, binaries, keyring, and services
 agy-t3-sync rotate-now                          # Switch immediately to highest-quota healthy account
 agy-t3-sync rotate-next                         # Switch round-robin to next healthy account

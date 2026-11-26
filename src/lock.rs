@@ -65,16 +65,12 @@ pub fn get_running_watcher_pid(paths: &AppPaths) -> Option<u32> {
         return None;
     }
 
-    let raw = fs::read_to_string(&paths.pid_path).ok().or_else(|| {
-        #[cfg(unix)]
-        {
-            fs::read_to_string(&paths.lock_path).ok()
-        }
-        #[cfg(not(unix))]
-        {
-            None
-        }
-    })?;
+    #[cfg(unix)]
+    let raw = fs::read_to_string(&paths.pid_path)
+        .ok()
+        .or_else(|| fs::read_to_string(&paths.lock_path).ok())?;
+    #[cfg(not(unix))]
+    let raw = fs::read_to_string(&paths.pid_path).ok()?;
 
     let pid: u32 = raw.trim().parse().ok()?;
     if pid > 0 && is_pid_alive(pid) {
