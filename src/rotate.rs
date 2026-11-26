@@ -65,13 +65,17 @@ fn run_switch_with_timeout(bin: &std::path::Path, target_email: &str, timeout: D
     }
 }
 
+pub struct SwitchRequest<'a> {
+    pub target_email: &'a str,
+    pub reason: &'a str,
+    pub from_label: &'a str,
+    pub from_pct: &'a str,
+    pub to_pct: &'a str,
+}
+
 pub fn perform_switch(
     paths: &AppPaths,
-    target_email: &str,
-    reason: &str,
-    from_label: &str,
-    from_pct: &str,
-    to_pct: &str,
+    req: &SwitchRequest<'_>,
     quiet: bool,
     state: &mut RotateState,
 ) -> bool {
@@ -86,19 +90,22 @@ pub fn perform_switch(
         return false;
     };
 
-    match run_switch_with_timeout(&bin, target_email, Duration::from_secs(30)) {
+    match run_switch_with_timeout(&bin, req.target_email, Duration::from_secs(30)) {
         Ok((0, _)) => {
             let now = now_epoch_secs();
             state.last_rotate_at = now;
             state.last_rotate_attempt_at = now;
-            state.last_rotate_from = from_label.to_string();
-            state.last_rotate_to = target_email.to_string();
-            state.last_rotate_reason = reason.to_string();
+            state.last_rotate_from = req.from_label.to_string();
+            state.last_rotate_to = req.target_email.to_string();
+            state.last_rotate_reason = req.reason.to_string();
             let _ = save_state(paths, state);
 
             write_sync_log(
                 paths,
-                &format!("[rotate] {from_label} ({from_pct}) -> {target_email} ({to_pct}) [{reason}]"),
+                &format!(
+                    "[rotate] {} ({}) -> {} ({}) [{}]",
+                    req.from_label, req.from_pct, req.target_email, req.to_pct, req.reason
+                ),
                 quiet,
             );
             invoke_sync(paths, quiet);
@@ -110,7 +117,10 @@ pub fn perform_switch(
             let err_detail = sanitize_error_line(&output);
             write_sync_log(
                 paths,
-                &format!("[rotate] switch to {target_email} failed (rc={rc}): {err_detail}"),
+                &format!(
+                    "[rotate] switch to {} failed (rc={rc}): {err_detail}",
+                    req.target_email
+                ),
                 quiet,
             );
             false
@@ -121,7 +131,8 @@ pub fn perform_switch(
             write_sync_log(
                 paths,
                 &format!(
-                    "[rotate] switch to {target_email} failed: {}",
+                    "[rotate] switch to {} failed: {}",
+                    req.target_email,
                     sanitize_error_line(&msg)
                 ),
                 quiet,
@@ -238,14 +249,12 @@ pub fn maybe_auto_rotate(paths: &AppPaths, quiet: bool, force_mode: Option<&str>
         .unwrap_or_else(|| "n/a".to_string());
     let target_email = cand.email.clone();
 
-    perform_switch(
-        paths,
-        &target_email,
-        reason_str,
-        &from_label,
-        &from_pct,
-        &to_pct,
-        quiet,
-        &mut state,
-    )
+    let req = SwitchRequest {
+        target_email: &target_email,
+        reason: reason_str,
+        from_label: &from_label,
+        from_pct: &from_pct,
+        to_pct: &to_pct,
+    };
+    perform_switch(paths, &req, quiet, &mut state)
 }

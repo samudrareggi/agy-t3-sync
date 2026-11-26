@@ -155,6 +155,9 @@ mod platform {
     }
 
     pub fn is_pid_alive(pid: u32) -> bool {
+        if pid == process::id() {
+            return true;
+        }
         Path::new(&format!("/proc/{pid}")).exists()
     }
 
@@ -303,6 +306,9 @@ mod platform {
     }
 
     pub fn is_pid_alive(pid: u32) -> bool {
+        if pid == process::id() {
+            return true;
+        }
         let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
         rc == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
@@ -427,6 +433,9 @@ mod platform {
     }
 
     pub fn is_pid_alive(pid: u32) -> bool {
+        if pid == process::id() {
+            return true;
+        }
         let script = format!(
             "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
         );

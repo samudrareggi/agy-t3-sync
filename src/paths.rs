@@ -12,6 +12,7 @@ pub struct AppPaths {
     pub log_path: PathBuf,
     pub backup_dir: PathBuf,
     pub lock_path: PathBuf,
+    pub pid_path: PathBuf,
     pub config_path: PathBuf,
     pub state_path: PathBuf,
     pub accounts_index_path: PathBuf,
@@ -60,6 +61,7 @@ impl AppPaths {
             log_path: base_dir.join("sync.log"),
             backup_dir: base_dir.join("backups"),
             lock_path: base_dir.join("watcher.lock"),
+            pid_path: base_dir.join("watcher.pid"),
             config_path: base_dir.join("config.json"),
             state_path: base_dir.join("rotate_state.json"),
             base_dir,
@@ -102,6 +104,7 @@ pub fn find_antigravity_tools_bin(paths: &AppPaths) -> Option<PathBuf> {
     let mut extras = Vec::new();
     #[cfg(windows)]
     {
+        let _ = paths;
         let names = ["antigravity-tools.exe", "antigravity-tools.cmd"];
         for env_key in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(base) = env::var_os(env_key) {
@@ -110,7 +113,7 @@ pub fn find_antigravity_tools_bin(paths: &AppPaths) -> Option<PathBuf> {
                 extras.push(b.join("Antigravity Tools").join("antigravity-tools.exe"));
             }
         }
-        return find_binary("AGY_TOOLS_BIN", &names, &extras);
+        find_binary("AGY_TOOLS_BIN", &names, &extras)
     }
     #[cfg(target_os = "macos")]
     {
@@ -120,7 +123,7 @@ pub fn find_antigravity_tools_bin(paths: &AppPaths) -> Option<PathBuf> {
         extras.push(PathBuf::from("/opt/homebrew/bin/antigravity-tools"));
         extras.push(PathBuf::from("/usr/local/bin/antigravity-tools"));
         extras.push(paths.home_dir.join(".local").join("bin").join("antigravity-tools"));
-        return find_binary("AGY_TOOLS_BIN", &["antigravity-tools"], &extras);
+        find_binary("AGY_TOOLS_BIN", &["antigravity-tools"], &extras)
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
@@ -135,6 +138,7 @@ pub fn find_antigravity_server_bin(paths: &AppPaths) -> Option<PathBuf> {
     let mut extras = Vec::new();
     #[cfg(windows)]
     {
+        let _ = paths;
         for env_key in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
             if let Some(base) = env::var_os(env_key) {
                 let b = PathBuf::from(base);
@@ -142,7 +146,7 @@ pub fn find_antigravity_server_bin(paths: &AppPaths) -> Option<PathBuf> {
                 extras.push(b.join("Antigravity Tools").join("antigravity-server.exe"));
             }
         }
-        return find_binary("AGY_SERVER_BIN", &["antigravity-server.exe"], &extras);
+        find_binary("AGY_SERVER_BIN", &["antigravity-server.exe"], &extras)
     }
     #[cfg(target_os = "macos")]
     {
@@ -152,7 +156,7 @@ pub fn find_antigravity_server_bin(paths: &AppPaths) -> Option<PathBuf> {
         extras.push(PathBuf::from("/opt/homebrew/bin/antigravity-server"));
         extras.push(PathBuf::from("/usr/local/bin/antigravity-server"));
         extras.push(paths.home_dir.join(".local").join("bin").join("antigravity-server"));
-        return find_binary("AGY_SERVER_BIN", &["antigravity-server"], &extras);
+        find_binary("AGY_SERVER_BIN", &["antigravity-server"], &extras)
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {

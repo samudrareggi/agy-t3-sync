@@ -1,13 +1,14 @@
-use crate::log::{ensure_private_dir, set_private_file_perms};
+use crate::log::{ensure_private_dir, set_private_file_perms, write_private_bytes_atomic};
 use crate::paths::AppPaths;
 use crate::process::is_pid_alive;
 use fs2::FileExt;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::{self, File, OpenOptions};
+use std::path::PathBuf;
 use std::process;
 
 pub struct WatcherLock {
     file: File,
+    pid_path: PathBuf,
 }
 
 impl WatcherLock {
@@ -22,25 +23,30 @@ impl WatcherLock {
             opts.mode(0o600);
         }
 
-        let mut file = opts.open(&paths.lock_path).ok()?;
+        let file = opts.open(&paths.lock_path).ok()?;
         let _ = set_private_file_perms(&paths.lock_path);
 
         if file.try_lock_exclusive().is_err() {
             return None;
         }
 
-        let _ = file.set_len(0);
-        let _ = file.seek(SeekFrom::Start(0));
-        let _ = writeln!(file, "{}", process::id());
-        let _ = file.flush();
+        // Store PID in a separate unlocked file so Windows mandatory locks never block readers.
+        let _ = write_private_bytes_atomic(
+            &paths.pid_path,
+            format!("{}\n", process::id()).as_bytes(),
+        );
 
-        Some(Self { file })
+        Some(Self {
+            file,
+            pid_path: paths.pid_path.clone(),
+        })
     }
 }
 
 impl Drop for WatcherLock {
     fn drop(&mut self) {
         let _ = self.file.unlock();
+        let _ = fs::remove_file(&self.pid_path);
     }
 }
 
@@ -48,7 +54,7 @@ pub fn get_running_watcher_pid(paths: &AppPaths) -> Option<u32> {
     if !paths.lock_path.exists() {
         return None;
     }
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .open(&paths.lock_path)
@@ -59,9 +65,17 @@ pub fn get_running_watcher_pid(paths: &AppPaths) -> Option<u32> {
         return None;
     }
 
-    let _ = file.seek(SeekFrom::Start(0));
-    let mut raw = String::new();
-    let _ = file.read_to_string(&mut raw);
+    let raw = fs::read_to_string(&paths.pid_path).ok().or_else(|| {
+        #[cfg(unix)]
+        {
+            fs::read_to_string(&paths.lock_path).ok()
+        }
+        #[cfg(not(unix))]
+        {
+            None
+        }
+    })?;
+
     let pid: u32 = raw.trim().parse().ok()?;
     if pid > 0 && is_pid_alive(pid) {
         Some(pid)
