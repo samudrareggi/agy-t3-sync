@@ -63,6 +63,29 @@ agy-t3-sync config --disable                    # Keep token sync running withou
 
 Legacy `--status`, `--doctor`, `--install`, `--uninstall`, `--rotate-now`, `--rotate-next`, `--restart-agy`, `--rotate-config`, and `--once` flags are also supported.
 
+## Agent Skill (`/agy-t3-sync`)
+
+This repository ships an open-standard agent skill at [`.agents/skills/agy-t3-sync/SKILL.md`](.agents/skills/agy-t3-sync/SKILL.md) so you can check quotas, rotate accounts, run diagnostics, or update auto-rotate config with `/agy-t3-sync` in Antigravity / T3 Code, Claude Code, and Codex.
+
+Install across your agents:
+
+```sh
+npx skills add samudrareggi/agy-t3-sync
+```
+
+Or link/copy `.agents/skills/agy-t3-sync` manually into `~/.gemini/config/skills/`, `~/.claude/skills/`, or `~/.codex/skills/`.
+
+Examples inside chat/TUI:
+
+```text
+/agy-t3-sync
+/agy-t3-sync cached
+/agy-t3-sync rotate
+/agy-t3-sync next
+/agy-t3-sync doctor
+/agy-t3-sync config --threshold 15
+```
+
 ## Security & Privacy
 
 - Reads `~/.gemini/antigravity-cli/antigravity-oauth-token` directly from `$HOME` (immune to T3's `GEMINI_HOME` override).
