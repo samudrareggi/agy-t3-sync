@@ -15,12 +15,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: agy-t3-sync-linux-x86_64
             ext: tar.gz
             cross_aarch64: false
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             artifact: agy-t3-sync-linux-aarch64
             ext: tar.gz

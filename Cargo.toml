@@ -1,6 +1,6 @@
 [package]
 name = "agy-t3-sync"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "Cross-platform Antigravity account sync, quota auto-rotator, and idle-safe T3 Code restarter"
 license = "MIT"
